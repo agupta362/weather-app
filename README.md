@@ -1,6 +1,6 @@
 # AI Weather Explorer - PM Accelerator Assessment
 
-This is a Full-Stack Weather Application built for the PM Accelerator AI Engineer Intern technical assessment. It satisfies both **Tech Assessment #1 (Frontend)** and **Tech Assessment #2 (Backend/CRUD)**.
+This is a Full-Stack Weather Application built for the PM Accelerator AI Engineer Intern technical assessment. 
 
 ## 🚀 Features Implemented
 * **Smart Search & GPS:** Look up weather by city/zip, or use browser Geolocation to get local weather.
@@ -42,4 +42,3 @@ Open http://localhost:3000 with your browser to see the result.
 
 *(Make sure to change `YOUR_USERNAME` in the clone link to your actual GitHub username).*
 
-Once you save the README, run `git add .`, `git commit -m "Added README"`, and `git push` one last time. Grab your repo URL, record your demo video, and submit the Google form!
