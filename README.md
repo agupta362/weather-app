@@ -19,7 +19,7 @@ This is a Full-Stack Weather Application built for the PM Accelerator AI Enginee
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/YOUR_USERNAME/pm-accelerator-weather-app.git](https://github.com/YOUR_USERNAME/pm-accelerator-weather-app.git)
+   git clone [https://github.com/agupta362/pm-accelerator-weather-app.git](https://github.com/YOUR_USERNAME/pm-accelerator-weather-app.git)
    cd pm-accelerator-weather-app
 Install dependencies:
 (Note: The package.json file serves as the requirements file for this project).
@@ -40,5 +40,4 @@ Bash
 npm run dev
 Open http://localhost:3000 with your browser to see the result.
 
-*(Make sure to change `YOUR_USERNAME` in the clone link to your actual GitHub username).*
 
