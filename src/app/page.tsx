@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Sun, Cloud, CloudRain, Snowflake, Trash2, Edit2, Save, MapPin, Download } from "lucide-react";
-import { supabase } from "../lib/supabase";
 
 // --- TYPESCRIPT INTERFACES ---
 
-// Define the exact structure of the Open-Meteo API response to ensure strict type safety.
 interface WeatherData {
   name: string;
   lat: number;
@@ -24,15 +22,17 @@ interface WeatherData {
   };
 }
 
-// Define the schema for the Supabase database table.
+// Updated schema to match the Python API payload
 interface SavedLocation {
-  id: string;
-  location_name: string;
+  id: number;
+  name: string;
+  lat?: number;
+  lng?: number;
   temperature: number;
-  search_date?: string; 
+  condition?: string;
+  created_at?: string; 
 }
 
-// Helper function to map WMO weather codes to Lucide React icons.
 const getWeatherIcon = (code: number) => {
   if (code <= 3) return <Sun className="w-10 h-10 text-yellow-500 mx-auto" />;
   if (code <= 48) return <Cloud className="w-10 h-10 text-slate-400 mx-auto" />;
@@ -40,72 +40,97 @@ const getWeatherIcon = (code: number) => {
   return <Snowflake className="w-10 h-10 text-blue-300 mx-auto" />;
 };
 
+// Python Backend URL
+const API_URL = "http://127.0.0.1:5000/api/locations";
+
 export default function Home() {
   // --- STATE MANAGEMENT ---
-  
-  // Track user input and UI loading/error states.
   const [locationInput, setLocationInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   
-  // Type-safe state for API payload and database history.
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [history, setHistory] = useState<SavedLocation[]>([]);
 
-  // --- DATABASE CRUD OPERATIONS ---
+  // --- PYTHON API CRUD OPERATIONS ---
   
-  // READ: Fetch all saved locations from the Supabase database.
+  // READ: Fetch all saved locations from the Python backend
   const fetchHistory = async () => {
-    const { data, error } = await supabase
-      .from('weather_searches')
-      .select('*')
-      .order('search_date', { ascending: false });
-    
-    if (data && !error) {
-      setHistory(data as SavedLocation[]);
+    try {
+      const res = await fetch(API_URL);
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data as SavedLocation[]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch history from Python server:", error);
     }
   };
 
-  // Initialize history on component mount.
   useEffect(() => {
     fetchHistory();
   }, []);
 
-  // CREATE: Insert the currently viewed weather location into Supabase.
+  // CREATE: Send the current weather to the Python backend to be saved
   const saveToDatabase = async () => {
     if (!weatherData) return;
     
-    const { error } = await supabase.from('weather_searches').insert([
-      { location_name: weatherData.name, temperature: weatherData.current.temperature }
-    ]);
-    
-    if (!error) {
-      fetchHistory();
-    } else {
-      alert("Error saving to database.");
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: weatherData.name,
+          lat: weatherData.lat,
+          lng: weatherData.lon,
+          temperature: weatherData.current.temperature,
+          condition: weatherData.current.weathercode.toString()
+        }),
+      });
+
+      if (res.ok) {
+        fetchHistory();
+      } else {
+        alert("Error saving to database.");
+      }
+    } catch (error) {
+      console.error("Error saving:", error);
     }
   };
 
-  // DELETE: Remove a specific record from Supabase after user confirmation.
-  const deleteRecord = async (id: string) => {
+  // DELETE: Tell the Python backend to remove a specific record
+  const deleteRecord = async (id: number) => {
     if (confirm("Delete this saved location?")) {
-      const { error } = await supabase.from('weather_searches').delete().eq('id', id);
-      if (!error) fetchHistory();
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: "DELETE",
+        });
+        if (res.ok) fetchHistory();
+      } catch (error) {
+        console.error("Error deleting:", error);
+      }
     }
   };
 
-  // UPDATE: Prompt the user for a new name and update the Supabase record.
-  const updateRecord = async (id: string, currentName: string) => {
+  // UPDATE: Tell the Python backend to rename a specific record
+  const updateRecord = async (id: number, currentName: string) => {
     const newName = prompt("Rename this location:", currentName);
     if (newName && newName.trim() !== "") {
-      const { error } = await supabase.from('weather_searches').update({ location_name: newName }).eq('id', id);
-      if (!error) fetchHistory();
+      try {
+        const res = await fetch(`${API_URL}/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newName }),
+        });
+        if (res.ok) fetchHistory();
+      } catch (error) {
+        console.error("Error updating:", error);
+      }
     }
   };
 
-  // --- API OPERATIONS ---
+  // --- OPEN METEO API OPERATIONS ---
 
-  // Reusable function to fetch weather data by coordinates.
   const getWeatherData = async (lat: number, lon: number, displayName: string) => {
     try {
       const res = await fetch(
@@ -131,7 +156,6 @@ export default function Home() {
     }
   };
 
-  // Handle text-based search submission.
   const handleManualSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -139,7 +163,6 @@ export default function Home() {
     setWeatherData(null);
 
     try {
-      // Geocode the city name into coordinates.
       const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${locationInput}&count=1`);
       const geoData = await geoRes.json();
 
@@ -150,7 +173,6 @@ export default function Home() {
       const { latitude, longitude, name, admin1, country } = geoData.results[0];
       const fullName = `${name}, ${admin1 || country}`;
       
-      // Fetch weather using the retrieved coordinates.
       await getWeatherData(latitude, longitude, fullName);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "An error occurred during search.";
@@ -159,7 +181,6 @@ export default function Home() {
     }
   };
 
-  // Handle GPS location search using the browser's Geolocation API.
   const handleGPSSearch = () => {
     setLoading(true);
     setErrorMsg("");
@@ -171,12 +192,10 @@ export default function Home() {
           const lon = position.coords.longitude;
           
           try {
-            // Attempt reverse geocoding to retrieve a readable city name.
             const reverseGeo = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
             const reverseData = await reverseGeo.json();
             await getWeatherData(lat, lon, `${reverseData.city}, ${reverseData.principalSubdivision}`);
           } catch {
-            // Fallback to a generic string if reverse geocoding fails.
             await getWeatherData(lat, lon, "Your Location");
           }
         },
@@ -191,7 +210,6 @@ export default function Home() {
     }
   };
 
-  // Convert the Supabase history array into a downloadable JSON file.
   const handleExport = () => {
     const dataStr = JSON.stringify(history, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -209,9 +227,8 @@ export default function Home() {
         
         {/* Left Side: Search & Weather */}
         <div className="bg-white rounded-xl shadow-md p-6 border border-slate-200">
-          <h1 className="text-2xl font-bold text-slate-800 mb-6 text-center">AI Weather Explorer</h1>
+          <h1 className="text-2xl font-bold text-slate-800 mb-6 text-center">Full-Stack Weather Explorer</h1>
           
-          {/* Search Bar */}
           <form onSubmit={handleManualSearch} className="flex gap-2 mb-4">
             <button 
               type="button" 
@@ -238,14 +255,12 @@ export default function Home() {
             </button>
           </form>
 
-          {/* Error Handling Display */}
           {errorMsg && (
             <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm font-medium">
               {errorMsg}
             </div>
           )}
 
-          {/* Primary Weather Display */}
           {weatherData && (
             <div className="mt-6">
               <div className="text-center bg-slate-50 p-6 rounded-lg border border-slate-100 relative">
@@ -263,7 +278,6 @@ export default function Home() {
                 <p className="text-slate-500">Wind: {weatherData.current.windspeed} mph</p>
               </div>
 
-              {/* Fulfilling 1.1 Requirement: 5 Day Forecast Grid */}
               <div className="mt-6">
                 <h3 className="text-sm font-bold text-slate-400 uppercase mb-3">5-Day Forecast</h3>
                 <div className="grid grid-cols-5 gap-2">
@@ -282,7 +296,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Fulfilling 2.2 Requirement: Google Maps API Integration */}
               <div className="mt-6 h-48 rounded-lg overflow-hidden border border-slate-200">
                 <iframe
                   title="Google Map"
@@ -308,11 +321,11 @@ export default function Home() {
                 {history.map((item) => (
                   <li key={item.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg border border-slate-200">
                     <div>
-                      <p className="font-bold text-slate-800">{item.location_name}</p>
+                      <p className="font-bold text-slate-800">{item.name}</p>
                       <p className="text-sm text-slate-500">{item.temperature}°F</p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => updateRecord(item.id, item.location_name)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors">
+                      <button onClick={() => updateRecord(item.id, item.name)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors">
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button onClick={() => deleteRecord(item.id)} className="p-1.5 text-red-600 hover:bg-red-100 rounded transition-colors">
